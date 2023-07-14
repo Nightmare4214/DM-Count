@@ -3,9 +3,10 @@ from PIL import Image
 import numpy as np
 import os
 from glob import glob
-import cv2
+from cv2 import cv2
 
 dir_name = os.path.dirname(os.path.abspath(__file__))
+
 
 def cal_new_size(im_h, im_w, min_size, max_size):
     if im_h < im_w:
@@ -55,8 +56,7 @@ def main(input_dataset_path, output_dataset_path, min_size=512, max_size=2048):
             sub_phase_list = ['train', 'val']
             for sub_phase in sub_phase_list:
                 sub_save_dir = os.path.join(output_dataset_path, sub_phase)
-                if not os.path.exists(sub_save_dir):
-                    os.makedirs(sub_save_dir)
+                os.makedirs(sub_save_dir, exist_ok=True)
                 with open(os.path.join(dir_name, 'qnrf_{}.txt'.format(sub_phase))) as f:
                     for i in f:
                         im_path = os.path.join(sub_dir, i.strip())
@@ -69,8 +69,7 @@ def main(input_dataset_path, output_dataset_path, min_size=512, max_size=2048):
                         np.save(gd_save_path, points)
         else:
             sub_save_dir = os.path.join(output_dataset_path, 'test')
-            if not os.path.exists(sub_save_dir):
-                os.makedirs(sub_save_dir)
+            os.makedirs(sub_save_dir, exist_ok=True)
             im_list = glob(os.path.join(sub_dir, '*jpg'))
             for im_path in im_list:
                 name = os.path.basename(im_path)

@@ -70,6 +70,13 @@ To launch a Gradio interface, run
 A [Kaggle Notebook](https://www.kaggle.com/selmanzleyen/dmcount-shb) is developed by [Selman Ozleyen](https://github.com/SelmanOzleyen/DM-Count). Thanks Selman!
 
 
+## reproduction
+
+
+### qnrf
+
+pretrained_models/model_qnrf.pth: mae 85.76006602669905, mse 150.3385868782564
+
 ## References
 If you find this work or code useful, please cite:
 

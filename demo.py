@@ -1,12 +1,12 @@
-import torch
-from models import vgg19
+from cv2 import cv2
 import gdown
+import gradio as gr
+import numpy as np
+import torch
 from PIL import Image
 from torchvision import transforms
-import gradio as gr
-import cv2
-import numpy as np
-import scipy
+
+from models import vgg19
 
 model_path = "pretrained_models/model_qnrf.pth"
 url = "https://drive.google.com/uc?id=1nnIHPaV9RGqK8JHL645zmRvkNrahD9ru"

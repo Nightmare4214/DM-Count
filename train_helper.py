@@ -1,18 +1,34 @@
 import os
+import random
 import time
+from datetime import datetime
+
+import numpy as np
 import torch
 import torch.nn as nn
+from timm.utils import AverageMeter
 from torch import optim
 from torch.utils.data import DataLoader
 from torch.utils.data.dataloader import default_collate
-import numpy as np
-from datetime import datetime
+from torch.utils.tensorboard import SummaryWriter
+from tqdm import tqdm
 
-from datasets.crowd import Crowd_qnrf, Crowd_nwpu, Crowd_sh
-from models import vgg19
-from losses.ot_loss import OT_Loss
-from utils.pytorch_utils import Save_Handle, AverageMeter
 import utils.log_utils as log_utils
+from datasets.crowd import Crowd_qnrf, Crowd_nwpu, Crowd_sh
+from losses.ot_loss import OT_Loss
+from models import vgg19
+from utils.pytorch_utils import Save_Handle
+
+
+def seed_worker(worker_id):
+    worker_seed = torch.initial_seed() % 2 ** 32
+
+    np.random.seed(worker_seed)
+    random.seed(worker_seed)
+
+
+# g = torch.Generator()
+# g.manual_seed(42)
 
 
 def train_collate(batch):
@@ -32,9 +48,8 @@ class Trainer(object):
         sub_dir = 'input-{}_wot-{}_wtv-{}_reg-{}_nIter-{}_normCood-{}'.format(
             args.crop_size, args.wot, args.wtv, args.reg, args.num_of_iter_in_ot, args.norm_cood)
 
-        self.save_dir = os.path.join('ckpts', sub_dir)
-        if not os.path.exists(self.save_dir):
-            os.makedirs(self.save_dir)
+        self.save_dir = os.path.join(args.save_dir, 'ckpts', sub_dir)
+        os.makedirs(self.save_dir, exist_ok=True)
 
         time_str = datetime.strftime(datetime.now(), '%m%d-%H%M%S')
         self.logger = log_utils.get_logger(os.path.join(self.save_dir, 'train-{:s}.log'.format(time_str)))
@@ -69,18 +84,19 @@ class Trainer(object):
                                                       if x == 'train' else default_collate),
                                           batch_size=(args.batch_size
                                                       if x == 'train' else 1),
-                                          shuffle=(True if x == 'train' else False),
+                                          shuffle=(x == 'train'),
                                           num_workers=args.num_workers * self.device_count,
-                                          pin_memory=(True if x == 'train' else False))
+                                          pin_memory=(x == 'train'),
+                                          # worker_init_fn=seed_worker, generator=g
+                                          )
                             for x in ['train', 'val']}
-        self.model = vgg19()
-        self.model.to(self.device)
+        self.model = vgg19().to(self.device)
         self.optimizer = optim.Adam(self.model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
 
         self.start_epoch = 0
         if args.resume:
             self.logger.info('loading pretrained model from ' + args.resume)
-            suf = args.resume.rsplit('.', 1)[-1]
+            suf = os.path.splitext(args.resume)[-1]
             if suf == 'tar':
                 checkpoint = torch.load(args.resume, self.device)
                 self.model.load_state_dict(checkpoint['model_state_dict'])
@@ -96,6 +112,10 @@ class Trainer(object):
         self.tv_loss = nn.L1Loss(reduction='none').to(self.device)
         self.mse = nn.MSELoss().to(self.device)
         self.mae = nn.L1Loss().to(self.device)
+
+        self.log_dir = os.path.join(args.save_dir, 'runs')
+        self.writer = SummaryWriter(self.log_dir)
+
         self.save_list = Save_Handle(max_num=1)
         self.best_mae = np.inf
         self.best_mse = np.inf
@@ -123,55 +143,61 @@ class Trainer(object):
         epoch_start = time.time()
         self.model.train()  # Set model to training mode
 
-        for step, (inputs, points, gt_discrete) in enumerate(self.dataloaders['train']):
+        for step, (inputs, points, gt_discrete) in enumerate(tqdm(self.dataloaders['train'])):
             inputs = inputs.to(self.device)
-            gd_count = np.array([len(p) for p in points], dtype=np.float32)
-            points = [p.to(self.device) for p in points]
+            gd_count = np.array([len(p) for p in points], dtype=np.float32)  # (B,)
+            count_tensor = torch.from_numpy(gd_count).float().to(self.device)  # (B,)
+            points = [p.to(self.device) for p in points]  # (B, N, 2)
             gt_discrete = gt_discrete.to(self.device)
             N = inputs.size(0)
 
-            with torch.set_grad_enabled(True):
-                outputs, outputs_normed = self.model(inputs)
-                # Compute OT loss.
-                ot_loss, wd, ot_obj_value = self.ot_loss(outputs_normed, outputs, points)
-                ot_loss = ot_loss * self.args.wot
-                ot_obj_value = ot_obj_value * self.args.wot
-                epoch_ot_loss.update(ot_loss.item(), N)
-                epoch_ot_obj_value.update(ot_obj_value.item(), N)
-                epoch_wd.update(wd, N)
+            outputs, outputs_normed = self.model(inputs)  # (B, 1, 64, 64)
+            # Compute OT loss. ot_loss=<im_grad, predicted density> ,wd=<C,P>,  ot_obj_value=<z_hat / ||z_hat||1, beta>
+            ot_loss, wd, ot_obj_value = self.ot_loss(outputs_normed, outputs, points)
+            ot_loss = ot_loss * self.args.wot
+            ot_obj_value = ot_obj_value * self.args.wot
+            epoch_ot_loss.update(ot_loss.item(), N)
+            epoch_ot_obj_value.update(ot_obj_value.item(), N)
+            epoch_wd.update(wd, N)
+            # Compute counting loss.
+            count_loss = self.mae(torch.sum(outputs, dim=(1, 2, 3)),
+                                  count_tensor)
+            epoch_count_loss.update(count_loss.item(), N)
 
-                # Compute counting loss.
-                count_loss = self.mae(outputs.sum(1).sum(1).sum(1),
-                                      torch.from_numpy(gd_count).float().to(self.device))
-                epoch_count_loss.update(count_loss.item(), N)
+            # Compute TV loss.
+            gd_count_tensor = count_tensor[..., None, None, None]  # (B, 1, 1, 1)
+            gt_discrete_normed = gt_discrete / (gd_count_tensor + 1e-6)
+            tv_loss = (torch.sum(self.tv_loss(outputs_normed, gt_discrete_normed), dim=(1, 2, 3)) * count_tensor).mean(
+                0) * self.args.wtv
+            epoch_tv_loss.update(tv_loss.item(), N)
 
-                # Compute TV loss.
-                gd_count_tensor = torch.from_numpy(gd_count).float().to(self.device).unsqueeze(1).unsqueeze(
-                    2).unsqueeze(3)
-                gt_discrete_normed = gt_discrete / (gd_count_tensor + 1e-6)
-                tv_loss = (self.tv_loss(outputs_normed, gt_discrete_normed).sum(1).sum(1).sum(
-                    1) * torch.from_numpy(gd_count).float().to(self.device)).mean(0) * self.args.wtv
-                epoch_tv_loss.update(tv_loss.item(), N)
+            loss = ot_loss + count_loss + tv_loss
 
-                loss = ot_loss + count_loss + tv_loss
+            self.optimizer.zero_grad()
+            loss.backward()
+            self.optimizer.step()
 
-                self.optimizer.zero_grad()
-                loss.backward()
-                self.optimizer.step()
-
-                pred_count = torch.sum(outputs.view(N, -1), dim=1).detach().cpu().numpy()
-                pred_err = pred_count - gd_count
-                epoch_loss.update(loss.item(), N)
-                epoch_mse.update(np.mean(pred_err * pred_err), N)
-                epoch_mae.update(np.mean(abs(pred_err)), N)
+            pred_count = torch.sum(outputs.view(N, -1), dim=1).detach().cpu().numpy()
+            pred_err = pred_count - gd_count
+            epoch_loss.update(loss.item(), N)
+            epoch_mse.update(np.mean(pred_err * pred_err), N)
+            epoch_mae.update(np.mean(abs(pred_err)), N)
+        self.writer.add_scalar('train/loss', epoch_loss.avg, self.epoch)
+        self.writer.add_scalar('train/ot', epoch_ot_loss.avg, self.epoch)
+        self.writer.add_scalar('train/wd', epoch_wd.avg, self.epoch)
+        self.writer.add_scalar('train/ot_obj', epoch_ot_obj_value.avg, self.epoch)
+        self.writer.add_scalar('train/count', epoch_count_loss.avg, self.epoch)
+        self.writer.add_scalar('train/tv', epoch_tv_loss.avg, self.epoch)
+        self.writer.add_scalar('train/mse', np.sqrt(epoch_mse.avg), self.epoch)
+        self.writer.add_scalar('train/mae', epoch_mae.avg, self.epoch)
 
         self.logger.info(
             'Epoch {} Train, Loss: {:.2f}, OT Loss: {:.2e}, Wass Distance: {:.2f}, OT obj value: {:.2f}, '
             'Count Loss: {:.2f}, TV Loss: {:.2f}, MSE: {:.2f} MAE: {:.2f}, Cost {:.1f} sec'
-                .format(self.epoch, epoch_loss.get_avg(), epoch_ot_loss.get_avg(), epoch_wd.get_avg(),
-                        epoch_ot_obj_value.get_avg(), epoch_count_loss.get_avg(), epoch_tv_loss.get_avg(),
-                        np.sqrt(epoch_mse.get_avg()), epoch_mae.get_avg(),
-                        time.time() - epoch_start))
+            .format(self.epoch, epoch_loss.avg, epoch_ot_loss.avg, epoch_wd.avg,
+                    epoch_ot_obj_value.avg, epoch_count_loss.avg, epoch_tv_loss.avg,
+                    np.sqrt(epoch_mse.avg), epoch_mae.avg,
+                    time.time() - epoch_start))
         model_state_dic = self.model.state_dict()
         save_path = os.path.join(self.save_dir, '{}_ckpt.tar'.format(self.epoch))
         torch.save({
@@ -182,14 +208,15 @@ class Trainer(object):
         self.save_list.append(save_path)
 
     def val_epoch(self):
-        args = self.args
+        # args = self.args
         epoch_start = time.time()
         self.model.eval()  # Set model to evaluate mode
         epoch_res = []
-        for inputs, count, name in self.dataloaders['val']:
-            inputs = inputs.to(self.device)
-            assert inputs.size(0) == 1, 'the batch size should equal to 1 in validation mode'
-            with torch.set_grad_enabled(False):
+        with torch.no_grad():
+            for inputs, count, name in tqdm(self.dataloaders['val']):
+                inputs = inputs.to(self.device)
+                assert inputs.size(0) == 1, 'the batch size should equal to 1 in validation mode'
+
                 outputs, _ = self.model(inputs)
                 res = count[0].item() - torch.sum(outputs).item()
                 epoch_res.append(res)
@@ -197,6 +224,8 @@ class Trainer(object):
         epoch_res = np.array(epoch_res)
         mse = np.sqrt(np.mean(np.square(epoch_res)))
         mae = np.mean(np.abs(epoch_res))
+        self.writer.add_scalar('val/mae', mae, self.epoch)
+        self.writer.add_scalar('val/mse', mse, self.epoch)
         self.logger.info('Epoch {} Val, MSE: {:.2f} MAE: {:.2f}, Cost {:.1f} sec'
                          .format(self.epoch, mse, mae, time.time() - epoch_start))
 
@@ -209,3 +238,5 @@ class Trainer(object):
                                                                                      self.epoch))
             torch.save(model_state_dic, os.path.join(self.save_dir, 'best_model_{}.pth'.format(self.best_count)))
             self.best_count += 1
+        if mae < self.best_mae:
+            torch.save(model_state_dic, os.path.join(self.save_dir, 'best_model_mae.pth'))

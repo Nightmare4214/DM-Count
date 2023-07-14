@@ -165,14 +165,16 @@ def sinkhorn_knopp(a, b, C, reg=1e-1, maxIter=1000, stopThr=1e-9,
     err = 1
 
     # allocate memory beforehand
-    KTu = torch.empty(v.shape, dtype=v.dtype).to(device)
-    Kv = torch.empty(u.shape, dtype=u.dtype).to(device)
+    # KTu = torch.empty(v.shape, dtype=v.dtype).to(device)
+    # Kv = torch.empty(u.shape, dtype=u.dtype).to(device)
 
-    while (err > stopThr and it <= maxIter):
+    while err > stopThr and it <= maxIter:
         upre, vpre = u, v
-        torch.matmul(u, K, out=KTu)
+        KTu = torch.matmul(u, K)# K^T u
+        # torch.matmul(u, K, out=KTu)
         v = torch.div(b, KTu + M_EPS)
-        torch.matmul(K, v, out=Kv)
+        Kv = torch.matmul(K, v) # K v
+        # torch.matmul(K, v, out=Kv)
         u = torch.div(a, Kv + M_EPS)
 
         if torch.any(torch.isnan(u)) or torch.any(torch.isnan(v)) or \
@@ -322,11 +324,13 @@ def sinkhorn_stabilized(a, b, C, reg=1e-1, maxIter=1000, tau=1e3, stopThr=1e-9,
     Kv = torch.empty(u.shape, dtype=u.dtype).to(device)
     P = torch.empty(C.shape, dtype=C.dtype).to(device)
 
-    while (err > stopThr and it <= maxIter):
+    while err > stopThr and it <= maxIter:
         upre, vpre = u, v
-        torch.matmul(u, K, out=KTu)
+        KTu = torch.matmul(u, K)
+        # torch.matmul(u, K, out=KTu)
         v = torch.div(b, KTu + M_EPS)
-        torch.matmul(K, v, out=Kv)
+        Kv = torch.matmul(K, v)
+        # torch.matmul(K, v, out=Kv)
         u = torch.div(a, Kv + M_EPS)
 
         ab_updated = False

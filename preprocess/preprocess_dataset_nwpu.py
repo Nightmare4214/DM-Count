@@ -2,7 +2,7 @@ from scipy.io import loadmat
 from PIL import Image
 import numpy as np
 import os
-import cv2
+from cv2 import cv2
 
 
 def cal_new_size_v2(im_h, im_w, min_size, max_size):
@@ -102,8 +102,7 @@ def main(input_dataset_path, output_dataset_path, min_size=384, max_size=1920):
 
     for phase in ['train', 'val']:
         sub_save_dir = os.path.join(output_dataset_path, phase)
-        if not os.path.exists(sub_save_dir):
-            os.makedirs(sub_save_dir)
+        os.makedirs(sub_save_dir, exist_ok=True)
         with open(os.path.join(input_dataset_path, '{}.txt'.format(phase))) as f:
             lines = f.readlines()
             for i in lines:
@@ -123,8 +122,7 @@ def main(input_dataset_path, output_dataset_path, min_size=384, max_size=1920):
 
     for phase in ['test']:
         sub_save_dir = os.path.join(output_dataset_path, phase)
-        if not os.path.exists(sub_save_dir):
-            os.makedirs(sub_save_dir)
+        os.makedirs(sub_save_dir, exist_ok=True)
         with open(os.path.join(input_dataset_path, '{}.txt'.format(phase))) as f:
             lines = f.readlines()
             for i in lines:

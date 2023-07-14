@@ -1,4 +1,9 @@
 import os
+import random
+
+import numpy as np
+import torch
+
 
 def adjust_learning_rate(optimizer, epoch, initial_lr=0.001, decay_epoch=10):
     """Sets the learning rate to the initial LR decayed by 10 every 30 epochs"""
@@ -9,6 +14,7 @@ def adjust_learning_rate(optimizer, epoch, initial_lr=0.001, decay_epoch=10):
 
 class Save_Handle(object):
     """handle the number of """
+
     def __init__(self, max_num):
         self.save_list = []
         self.max_num = max_num
@@ -24,35 +30,35 @@ class Save_Handle(object):
                 os.remove(remove_path)
 
 
-class AverageMeter(object):
-    """Computes and stores the average and current value"""
-    def __init__(self):
-        self.reset()
-
-    def reset(self):
-        self.val = 0
-        self.avg = 0
-        self.sum = 0
-        self.count = 0
-
-    def update(self, val, n=1):
-        self.val = val
-        self.sum += val * n
-        self.count += n
-        self.avg = 1.0 * self.sum / self.count
-
-    def get_avg(self):
-        return self.avg
-
-    def get_count(self):
-        return self.count
-
-
 def set_trainable(model, requires_grad):
     for param in model.parameters():
         param.requires_grad = requires_grad
 
 
-
 def get_num_params(model):
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
+
+
+def setup_seed(seed=42):
+    """
+    set random seed
+
+    :param seed: seed num
+    """
+    os.environ['PYTHONHASHSEED'] = str(seed)
+    os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":16:8"  # LSTM(cuda>10.2)
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)  # if you are using multi-GPU.
+    torch.use_deterministic_algorithms(True, warn_only=True)
+    # torch.backends.cudnn.enabled = False
+    torch.backends.cudnn.benchmark = False
+    torch.backends.cudnn.deterministic = True
+
+
+def seed_worker(worker_id):
+    worker_seed = torch.initial_seed() % 2 ** 32
+    np.random.seed(worker_seed)
+    random.seed(worker_seed)

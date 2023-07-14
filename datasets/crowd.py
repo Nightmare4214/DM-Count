@@ -28,13 +28,15 @@ def gen_discrete_map(im_height, im_width, points):
     num_gt = points.shape[0]
     if num_gt == 0:
         return discrete_map
-    
+
     # fast create discrete map
     points_np = np.array(points).round().astype(int)
-    p_h = np.minimum(points_np[:, 1], np.array([h-1]*num_gt).astype(int))
-    p_w = np.minimum(points_np[:, 0], np.array([w-1]*num_gt).astype(int))
-    p_index = torch.from_numpy(p_h* im_width + p_w)
-    discrete_map = torch.zeros(im_width * im_height).scatter_add_(0, index=p_index, src=torch.ones(im_width*im_height)).view(im_height, im_width).numpy()
+    p_h = np.minimum(points_np[:, 1], np.array([h - 1] * num_gt).astype(int))
+    p_w = np.minimum(points_np[:, 0], np.array([w - 1] * num_gt).astype(int))
+    p_index = torch.from_numpy(p_h * im_width + p_w)
+    discrete_map = torch.zeros(im_width * im_height).scatter_add_(0, index=p_index,
+                                                                  src=torch.ones(im_width * im_height)).view(im_height,
+                                                                                                             im_width).numpy()
 
     ''' slow method
     for p in points:
@@ -73,7 +75,7 @@ class Base(data.Dataset):
         i, j, h, w = random_crop(ht, wd, self.c_size, self.c_size)
         img = F.crop(img, i, j, h, w)
         if len(keypoints) > 0:
-            keypoints = keypoints - [j, i]
+            keypoints = keypoints[:, :2] - [j, i]
             idx_mask = (keypoints[:, 0] >= 0) * (keypoints[:, 0] <= w) * \
                        (keypoints[:, 1] >= 0) * (keypoints[:, 1] <= h)
             keypoints = keypoints[idx_mask]
@@ -125,7 +127,7 @@ class Crowd_qnrf(Base):
         elif self.method == 'val':
             keypoints = np.load(gd_path)
             img = self.trans(img)
-            name = os.path.basename(img_path).split('.')[0]
+            name = os.path.splitext(os.path.basename(img_path))[0]
             return img, len(keypoints), name
 
 
@@ -154,11 +156,11 @@ class Crowd_nwpu(Base):
         elif self.method == 'val':
             keypoints = np.load(gd_path)
             img = self.trans(img)
-            name = os.path.basename(img_path).split('.')[0]
+            name = os.path.splitext(os.path.basename(img_path))[0]
             return img, len(keypoints), name
         elif self.method == 'test':
             img = self.trans(img)
-            name = os.path.basename(img_path).split('.')[0]
+            name = os.path.splitext(os.path.basename(img_path))[0]
             return img, name
 
 
@@ -179,7 +181,7 @@ class Crowd_sh(Base):
 
     def __getitem__(self, item):
         img_path = self.im_list[item]
-        name = os.path.basename(img_path).split('.')[0]
+        name = os.path.splitext(os.path.basename(img_path))[0]
         gd_path = os.path.join(self.root_path, 'ground-truth', 'GT_{}.mat'.format(name))
         img = Image.open(img_path).convert('RGB')
         keypoints = sio.loadmat(gd_path)['image_info'][0][0][0][0][0]

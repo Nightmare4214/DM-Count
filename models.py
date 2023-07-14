@@ -1,3 +1,4 @@
+import torch
 import torch.nn as nn
 import torch.utils.model_zoo as model_zoo
 from torch.nn import functional as F
@@ -6,6 +7,7 @@ __all__ = ['vgg19']
 model_urls = {
     'vgg19': 'https://download.pytorch.org/models/vgg19-dcbb9e9d.pth',
 }
+
 
 class VGG(nn.Module):
     def __init__(self, features):
@@ -18,16 +20,32 @@ class VGG(nn.Module):
             nn.ReLU(inplace=True),
         )
         self.density_layer = nn.Sequential(nn.Conv2d(128, 1, 1), nn.ReLU())
+        self._initialize_weights()
 
     def forward(self, x):
         x = self.features(x)
-        x = F.upsample_bilinear(x, scale_factor=2)
+        x = F.interpolate(x, scale_factor=2, mode='bilinear')
+        # x = F.interpolate(x, scale_factor=2, mode='nearest')
         x = self.reg_layer(x)
         mu = self.density_layer(x)
-        B, C, H, W = mu.size()
-        mu_sum = mu.view([B, -1]).sum(1).unsqueeze(1).unsqueeze(2).unsqueeze(3)
+        mu_sum = torch.sum(mu, dim=(1, 2, 3), keepdim=True)
         mu_normed = mu / (mu_sum + 1e-6)
         return mu, mu_normed
+
+    def _initialize_weights(self):
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                nn.init.normal_(m.weight, std=0.01)
+                if m.bias is not None:
+                    nn.init.constant_(m.bias, 0)
+            elif isinstance(m, nn.BatchNorm2d):
+                nn.init.constant_(m.weight, 1)
+                nn.init.constant_(m.bias, 0)
+            elif isinstance(m, nn.ConvTranspose2d):
+                nn.init.normal_(m.weight, std=0.01)
+                if m.bias is not None:
+                    nn.init.constant_(m.bias, 0)
+
 
 def make_layers(cfg, batch_norm=False):
     layers = []
@@ -44,9 +62,11 @@ def make_layers(cfg, batch_norm=False):
             in_channels = v
     return nn.Sequential(*layers)
 
+
 cfg = {
     'E': [64, 64, 'M', 128, 128, 'M', 256, 256, 256, 256, 'M', 512, 512, 512, 512, 'M', 512, 512, 512, 512]
 }
+
 
 def vgg19():
     """VGG 19-layer model (configuration "E")
