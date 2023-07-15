@@ -77,6 +77,9 @@ A [Kaggle Notebook](https://www.kaggle.com/selmanzleyen/dmcount-shb) is develope
 
 pretrained_models/model_qnrf.pth: mae 85.76006602669905, mse 150.3385868782564
 
+best_model_7.pth: mae 89.24010239104311, mse 155.59441664755747
+
+
 ## References
 If you find this work or code useful, please cite:
 
