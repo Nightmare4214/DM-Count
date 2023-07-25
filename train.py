@@ -7,10 +7,6 @@ from train_helper import Trainer
 from utils.pytorch_utils import setup_seed
 
 
-def str2bool(v):
-    return v.lower() in ("yes", "true", "t", "1")
-
-
 def parse_args():
     parser = argparse.ArgumentParser(description='Train')
     parser.add_argument('--save_dir', default='/home/icml007/Nightmare4214/PyTorch_model/DM-Count',
@@ -69,3 +65,4 @@ if __name__ == '__main__':
     trainer = Trainer(args)
     trainer.setup()
     trainer.train()
+    trainer.test()

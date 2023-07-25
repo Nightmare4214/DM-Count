@@ -12,12 +12,31 @@ from torch.utils.data import DataLoader
 from torch.utils.data.dataloader import default_collate
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
+import wandb
+from test import do_test, get_dataloader_by_args
 
 import utils.log_utils as log_utils
 from datasets.crowd import Crowd_qnrf, Crowd_nwpu, Crowd_sh
 from losses.ot_loss import OT_Loss
 from models import vgg19
 from utils.pytorch_utils import Save_Handle
+
+
+include_keys=['max_epoch', 'crop_size', 'lr', 'wot', 'wtv', 'reg', 'num_of_iter_in_ot', 'norm_cood', 'batch_size']
+
+
+def get_run_name_by_args(args, include_keys=None, exclude_keys=None):
+    data = args.__dict__
+    result = []
+    if include_keys:
+        for k in include_keys:
+            result.append(f'{k}_{data[k]}')
+    else:
+        for k, v in data.items():
+            if exclude_keys and k in exclude_keys:
+                continue
+            result.append(f'{k}_{v}')
+    return '_'.join(result)
 
 
 def seed_worker(worker_id):
@@ -45,11 +64,19 @@ class Trainer(object):
 
     def setup(self):
         args = self.args
-        sub_dir = 'input-{}_wot-{}_wtv-{}_reg-{}_nIter-{}_normCood-{}'.format(
-            args.crop_size, args.wot, args.wtv, args.reg, args.num_of_iter_in_ot, args.norm_cood)
-
-        self.save_dir = os.path.join(args.save_dir, 'ckpts', sub_dir)
+        self.save_dir = os.path.join(args.save_dir, get_run_name_by_args(args, include_keys) + '_' + datetime.strftime(datetime.now(), '%m%d-%H%M%S'))
+        args.save_dir = self.save_dir
+        self.args = args
         os.makedirs(self.save_dir, exist_ok=True)
+        wandb.init(
+            # set the wandb project where this run will be logged
+            project="DM-Count",
+            name = os.path.basename(self.args.save_dir),
+            # track hyperparameters and run metadata
+            config=args,
+            # resume=True,
+            # sync_tensorboard=True
+        )
 
         time_str = datetime.strftime(datetime.now(), '%m%d-%H%M%S')
         self.logger = log_utils.get_logger(os.path.join(self.save_dir, 'train-{:s}.log'.format(time_str)))
@@ -71,9 +98,9 @@ class Trainer(object):
             self.datasets = {x: Crowd_nwpu(os.path.join(args.data_dir, x),
                                            args.crop_size, downsample_ratio, x) for x in ['train', 'val']}
         elif args.dataset.lower() == 'sha' or args.dataset.lower() == 'shb':
-            self.datasets = {'train': Crowd_sh(os.path.join(args.data_dir, 'train_data'),
+            self.datasets = {'train': Crowd_sh(os.path.join(args.data_dir, 'train'),
                                                args.crop_size, downsample_ratio, 'train'),
-                             'val': Crowd_sh(os.path.join(args.data_dir, 'test_data'),
+                             'val': Crowd_sh(os.path.join(args.data_dir, 'val'),
                                              args.crop_size, downsample_ratio, 'val'),
                              }
         else:
@@ -113,8 +140,8 @@ class Trainer(object):
         self.mse = nn.MSELoss().to(self.device)
         self.mae = nn.L1Loss().to(self.device)
 
-        self.log_dir = os.path.join(args.save_dir, 'runs')
-        self.writer = SummaryWriter(self.log_dir)
+        self.log_dir = os.path.join(self.save_dir, 'runs')
+        # self.writer = SummaryWriter(self.log_dir)
 
         self.save_list = Save_Handle(max_num=1)
         self.best_mae = np.inf
@@ -130,6 +157,7 @@ class Trainer(object):
             self.train_eopch()
             if epoch % args.val_epoch == 0 and epoch >= args.val_start:
                 self.val_epoch()
+        self.val_epoch()
 
     def train_eopch(self):
         epoch_ot_loss = AverageMeter()
@@ -182,14 +210,25 @@ class Trainer(object):
             epoch_loss.update(loss.item(), N)
             epoch_mse.update(np.mean(pred_err * pred_err), N)
             epoch_mae.update(np.mean(abs(pred_err)), N)
-        self.writer.add_scalar('train/loss', epoch_loss.avg, self.epoch)
-        self.writer.add_scalar('train/ot', epoch_ot_loss.avg, self.epoch)
-        self.writer.add_scalar('train/wd', epoch_wd.avg, self.epoch)
-        self.writer.add_scalar('train/ot_obj', epoch_ot_obj_value.avg, self.epoch)
-        self.writer.add_scalar('train/count', epoch_count_loss.avg, self.epoch)
-        self.writer.add_scalar('train/tv', epoch_tv_loss.avg, self.epoch)
-        self.writer.add_scalar('train/mse', np.sqrt(epoch_mse.avg), self.epoch)
-        self.writer.add_scalar('train/mae', epoch_mae.avg, self.epoch)
+        
+        wandb.log({
+            'train/loss': epoch_loss.avg,
+            'train/ot': epoch_ot_loss.avg,
+            'train/wd': epoch_wd.avg,
+            'train/ot_obj': epoch_ot_obj_value.avg,
+            'train/count': epoch_count_loss.avg,
+            'train/tv': epoch_tv_loss.avg,
+            'train/mse': np.sqrt(epoch_mse.avg),
+            'train/mae': epoch_mae.avg,
+        }, step=self.epoch)
+        # self.writer.add_scalar('train/loss', epoch_loss.avg, self.epoch)
+        # self.writer.add_scalar('train/ot', epoch_ot_loss.avg, self.epoch)
+        # self.writer.add_scalar('train/wd', epoch_wd.avg, self.epoch)
+        # self.writer.add_scalar('train/ot_obj', epoch_ot_obj_value.avg, self.epoch)
+        # self.writer.add_scalar('train/count', epoch_count_loss.avg, self.epoch)
+        # self.writer.add_scalar('train/tv', epoch_tv_loss.avg, self.epoch)
+        # self.writer.add_scalar('train/mse', np.sqrt(epoch_mse.avg), self.epoch)
+        # self.writer.add_scalar('train/mae', epoch_mae.avg, self.epoch)
 
         self.logger.info(
             'Epoch {} Train, Loss: {:.2f}, OT Loss: {:.2e}, Wass Distance: {:.2f}, OT obj value: {:.2f}, '
@@ -218,19 +257,25 @@ class Trainer(object):
                 assert inputs.size(0) == 1, 'the batch size should equal to 1 in validation mode'
 
                 outputs, _ = self.model(inputs)
-                res = count[0].item() - torch.sum(outputs).item()
+                res = count.shape[1] - torch.sum(outputs).item()
                 epoch_res.append(res)
 
         epoch_res = np.array(epoch_res)
         mse = np.sqrt(np.mean(np.square(epoch_res)))
         mae = np.mean(np.abs(epoch_res))
-        self.writer.add_scalar('val/mae', mae, self.epoch)
-        self.writer.add_scalar('val/mse', mse, self.epoch)
+        wandb.log({
+            'val/mae': mae,
+            'val/mae': mse,
+        }, step=self.epoch)
+        # self.writer.add_scalar('val/mae', mae, self.epoch)
+        # self.writer.add_scalar('val/mse', mse, self.epoch)
         self.logger.info('Epoch {} Val, MSE: {:.2f} MAE: {:.2f}, Cost {:.1f} sec'
                          .format(self.epoch, mse, mae, time.time() - epoch_start))
 
         model_state_dic = self.model.state_dict()
         if (2.0 * mse + mae) < (2.0 * self.best_mse + self.best_mae):
+            if mae < self.best_mae or (mae == self.best_mae and mse < self.best_mse):
+                torch.save(model_state_dic, os.path.join(self.save_dir, 'best_model_mae.pth'))
             self.best_mse = mse
             self.best_mae = mae
             self.logger.info("save best mse {:.2f} mae {:.2f} model epoch {}".format(self.best_mse,
@@ -238,5 +283,11 @@ class Trainer(object):
                                                                                      self.epoch))
             torch.save(model_state_dic, os.path.join(self.save_dir, 'best_model_{}.pth'.format(self.best_count)))
             self.best_count += 1
-        if mae < self.best_mae:
-            torch.save(model_state_dic, os.path.join(self.save_dir, 'best_model_mae.pth'))
+    
+    def test(self):
+        dataloader = get_dataloader_by_args(self.args)
+        model_path = os.path.join(self.save_dir, 'best_model_mae.pth')
+        self.model.load_state_dict(torch.load(model_path, self.device))
+        mae, mse = do_test(self.model, self.device, dataloader, model_path, pred_density_map=True)
+        # wandb.summary['test_mae'] = mae
+        # wandb.summary['test_mse'] = mse

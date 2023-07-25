@@ -11,6 +11,9 @@
 *.condor
 *.sh
 
+.vscode
+wandb
+
 *.nii.gz
 *.pt
 *.pth

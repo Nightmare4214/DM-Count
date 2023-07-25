@@ -128,7 +128,7 @@ class Crowd_qnrf(Base):
             keypoints = np.load(gd_path)
             img = self.trans(img)
             name = os.path.splitext(os.path.basename(img_path))[0]
-            return img, len(keypoints), name
+            return img, keypoints, name
 
 
 class Crowd_nwpu(Base):
@@ -157,23 +157,31 @@ class Crowd_nwpu(Base):
             keypoints = np.load(gd_path)
             img = self.trans(img)
             name = os.path.splitext(os.path.basename(img_path))[0]
-            return img, len(keypoints), name
+            return img, keypoints, name
         elif self.method == 'test':
             img = self.trans(img)
             name = os.path.splitext(os.path.basename(img_path))[0]
             return img, name
 
 
-class Crowd_sh(Base):
+class Crowd_sh(data.Dataset):
     def __init__(self, root_path, crop_size,
                  downsample_ratio=8,
                  method='train'):
-        super().__init__(root_path, crop_size, downsample_ratio)
+        self.root_path = root_path
+        self.c_size = crop_size
+        self.d_ratio = downsample_ratio
+        assert self.c_size % self.d_ratio == 0
+        self.dc_size = self.c_size // self.d_ratio
+        self.trans = transforms.Compose([
+            transforms.ToTensor(),
+            transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+        ])
         self.method = method
         if method not in ['train', 'val']:
             raise Exception("not implement")
 
-        self.im_list = sorted(glob(os.path.join(self.root_path, 'images', '*.jpg')))
+        self.im_list = sorted(glob(os.path.join(self.root_path, '*.jpg')))
         print('number of img: {}'.format(len(self.im_list)))
 
     def __len__(self):
@@ -182,15 +190,17 @@ class Crowd_sh(Base):
     def __getitem__(self, item):
         img_path = self.im_list[item]
         name = os.path.splitext(os.path.basename(img_path))[0]
-        gd_path = os.path.join(self.root_path, 'ground-truth', 'GT_{}.mat'.format(name))
+        gd_path = os.path.join(self.root_path, name + '.npy')
         img = Image.open(img_path).convert('RGB')
-        keypoints = sio.loadmat(gd_path)['image_info'][0][0][0][0][0]
+        keypoints = np.load(gd_path)
 
         if self.method == 'train':
             return self.train_transform(img, keypoints)
         elif self.method == 'val':
             img = self.trans(img)
-            return img, len(keypoints), name
+            if len(keypoints) == 0:
+                keypoints = torch.zeros(size=(1, 1))
+            return img, keypoints, name
 
     def train_transform(self, img, keypoints):
         wd, ht = img.size
@@ -233,4 +243,4 @@ class Crowd_sh(Base):
         gt_discrete = np.expand_dims(gt_discrete, 0)
 
         return self.trans(img), torch.from_numpy(keypoints.copy()).float(), torch.from_numpy(
-            gt_discrete.copy()).float()
+            gt_discrete.copy()).float(), st_size
