@@ -265,7 +265,7 @@ class Trainer(object):
         mae = np.mean(np.abs(epoch_res))
         wandb.log({
             'val/mae': mae,
-            'val/mae': mse,
+            'val/mse': mse,
         }, step=self.epoch)
         # self.writer.add_scalar('val/mae', mae, self.epoch)
         # self.writer.add_scalar('val/mse', mse, self.epoch)
