@@ -68,6 +68,7 @@ class Trainer(object):
         args.save_dir = self.save_dir
         self.args = args
         os.makedirs(self.save_dir, exist_ok=True)
+        # os.environ["WANDB_MODE"] = "offline"
         wandb.init(
             # set the wandb project where this run will be logged
             project="DM-Count",
@@ -289,5 +290,5 @@ class Trainer(object):
         model_path = os.path.join(self.save_dir, 'best_model_mae.pth')
         self.model.load_state_dict(torch.load(model_path, self.device))
         mae, mse = do_test(self.model, self.device, dataloader, model_path, pred_density_map=True)
-        # wandb.summary['test_mae'] = mae
-        # wandb.summary['test_mse'] = mse
+        wandb.summary['test_mae'] = mae
+        wandb.summary['test_mse'] = mse
