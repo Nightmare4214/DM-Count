@@ -69,6 +69,18 @@ class Base(data.Dataset):
 
     def train_transform(self, img, keypoints):
         wd, ht = img.size
+        # assert len(keypoints) > 0
+        if self.extra_aug:
+            if random.random() > 0.88:
+                img = img.convert('L').convert('RGB')
+            re_size = random.random() * 0.5 + 0.75
+            wdd = (int)(wd*re_size)
+            htt = (int)(ht*re_size)
+            if min(wdd, htt) >= self.c_size:
+                wd = wdd
+                ht = htt
+                img = img.resize((wd, ht))
+                keypoints = keypoints*re_size
         st_size = 1.0 * min(wd, ht)
         assert st_size >= self.c_size
         assert len(keypoints) >= 0
@@ -106,9 +118,10 @@ class Base(data.Dataset):
 class Crowd_qnrf(Base):
     def __init__(self, root_path, crop_size,
                  downsample_ratio=8,
-                 method='train'):
+                 method='train', extra_aug=True):
         super().__init__(root_path, crop_size, downsample_ratio)
         self.method = method
+        self.extra_aug = extra_aug
         self.im_list = sorted(glob(os.path.join(self.root_path, '*.jpg')))
         print('number of img: {}'.format(len(self.im_list)))
         if method not in ['train', 'val']:
@@ -134,9 +147,10 @@ class Crowd_qnrf(Base):
 class Crowd_nwpu(Base):
     def __init__(self, root_path, crop_size,
                  downsample_ratio=8,
-                 method='train'):
+                 method='train', extra_aug=True):
         super().__init__(root_path, crop_size, downsample_ratio)
         self.method = method
+        self.extra_aug = extra_aug
         self.im_list = sorted(glob(os.path.join(self.root_path, '*.jpg')))
         print('number of img: {}'.format(len(self.im_list)))
 
@@ -167,8 +181,9 @@ class Crowd_nwpu(Base):
 class Crowd_sh(data.Dataset):
     def __init__(self, root_path, crop_size,
                  downsample_ratio=8,
-                 method='train'):
+                 method='train', extra_aug=True):
         self.root_path = root_path
+        self.extra_aug = extra_aug
         self.c_size = crop_size
         self.d_ratio = downsample_ratio
         assert self.c_size % self.d_ratio == 0
@@ -204,6 +219,18 @@ class Crowd_sh(data.Dataset):
 
     def train_transform(self, img, keypoints):
         wd, ht = img.size
+        # assert len(keypoints) > 0
+        if self.extra_aug:
+            if random.random() > 0.88:
+                img = img.convert('L').convert('RGB')
+            re_size = random.random() * 0.5 + 0.75
+            wdd = (int)(wd*re_size)
+            htt = (int)(ht*re_size)
+            if min(wdd, htt) >= self.c_size:
+                wd = wdd
+                ht = htt
+                img = img.resize((wd, ht))
+                keypoints = keypoints*re_size
         st_size = 1.0 * min(wd, ht)
         # resize the image to fit the crop size
         if st_size < self.c_size:

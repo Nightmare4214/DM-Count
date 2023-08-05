@@ -22,7 +22,7 @@ from models import vgg19
 from utils.pytorch_utils import Save_Handle
 
 
-include_keys=['max_epoch', 'crop_size', 'lr', 'wot', 'wtv', 'reg', 'num_of_iter_in_ot', 'norm_cood', 'batch_size']
+include_keys=['max_epoch', 'crop_size', 'extra_aug', 'lr', 'wot', 'wtv', 'reg', 'num_of_iter_in_ot', 'norm_cood', 'batch_size']
 
 
 def get_run_name_by_args(args, include_keys=None, exclude_keys=None):
@@ -94,15 +94,15 @@ class Trainer(object):
         downsample_ratio = 8
         if args.dataset.lower() == 'qnrf':
             self.datasets = {x: Crowd_qnrf(os.path.join(args.data_dir, x),
-                                           args.crop_size, downsample_ratio, x) for x in ['train', 'val']}
+                                           args.crop_size, downsample_ratio, x, extra_aug=args.extra_aug) for x in ['train', 'val']}
         elif args.dataset.lower() == 'nwpu':
             self.datasets = {x: Crowd_nwpu(os.path.join(args.data_dir, x),
-                                           args.crop_size, downsample_ratio, x) for x in ['train', 'val']}
+                                           args.crop_size, downsample_ratio, x, extra_aug=args.extra_aug) for x in ['train', 'val']}
         elif args.dataset.lower() == 'sha' or args.dataset.lower() == 'shb':
             self.datasets = {'train': Crowd_sh(os.path.join(args.data_dir, 'train'),
-                                               args.crop_size, downsample_ratio, 'train'),
+                                               args.crop_size, downsample_ratio, 'train', extra_aug=args.extra_aug),
                              'val': Crowd_sh(os.path.join(args.data_dir, 'val'),
-                                             args.crop_size, downsample_ratio, 'val'),
+                                             args.crop_size, downsample_ratio, 'val', extra_aug=args.extra_aug),
                              }
         else:
             raise NotImplementedError

@@ -40,6 +40,7 @@ def parse_args():
     parser.add_argument('--num_of_iter_in_ot', type=int, default=100,
                         help='sinkhorn iterations')
     parser.add_argument('--norm_cood', type=int, default=0, help='whether to norm cood when computing distance')
+    parser.add_argument('--extra_aug', default=False, required=False, action='store_true', help='extra_aug')
 
     args = parser.parse_args()
 

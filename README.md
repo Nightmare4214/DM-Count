@@ -32,10 +32,21 @@ Due to large sizes of images in QNRF and NWPU datasets, we preprocess these two 
 python preprocess_dataset.py --dataset <dataset name: qnrf or nwpu> --input-dataset-path <original data directory> --output-dataset-path <processed data directory> 
 ```
     
+### UCF-QNRF
+```bash
+python preprocess_dataset.py --origin_dir PATH_TO_ORIGIN_DATASET --data_dir PATH_TO_DATASET
+```
+
+### Shanghai Tech
+
+```bash
+python preprocess_shanghai.py --origin_dir PATH_TO_ORIGIN_DATASET --data_dir PATH_TO_DATASET --part 'A/B'
+```
+
 3. Training
 
 ```
-python train.py --dataset <dataset name: qnrf, sha, shb or nwpu> --data-dir <path to dataset> --device <gpu device id>
+python train.py --dataset <dataset name: qnrf, sha, shb or nwpu> --data-dir <path to dataset> --device <gpu device id> --dataset "qnrf/sha/shb" --extra_aug
 ```
 
 4. Test
@@ -75,10 +86,27 @@ A [Kaggle Notebook](https://www.kaggle.com/selmanzleyen/dmcount-shb) is develope
 
 ### qnrf
 
+paper: mae: 85.6, mse: 148.3
+
 pretrained_models/model_qnrf.pth: mae 85.76006602669905, mse 150.3385868782564
 
 best_model_7.pth: mae 89.24010239104311, mse 155.59441664755747
 
+### Shanghai A
+
+paper: mae: 59.7, mse: 95.7
+
+pretrained_models/sh_A.pth: mae 60.18459678482223, mse 96.35352205145051
+
+best_model_7.pth: mae 61.40630636110411, mse 92.74855786318376
+
+### Shanghai B
+
+paper: mae: 7.4, mse: 11.8
+
+pretrained_models/sh_B.pth: mae 7.57182005689114, mse 12.870159563373992
+
+best_model_mae.pth: mae 8.284255528751808, mse 13.73287273729886
 
 ## References
 If you find this work or code useful, please cite:
