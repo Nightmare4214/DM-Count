@@ -64,7 +64,10 @@ class Trainer(object):
 
     def setup(self):
         args = self.args
-        self.save_dir = os.path.join(args.save_dir, get_run_name_by_args(args, include_keys) + '_' + datetime.strftime(datetime.now(), '%m%d-%H%M%S'))
+        if os.path.exists(args.resume):
+            self.save_dir = os.path.dirname(args.resume)
+        else:
+            self.save_dir = os.path.join(args.save_dir, get_run_name_by_args(args, include_keys) + '_' + datetime.strftime(datetime.now(), '%m%d-%H%M%S'))
         args.save_dir = self.save_dir
         self.args = args
         os.makedirs(self.save_dir, exist_ok=True)
@@ -75,7 +78,7 @@ class Trainer(object):
             name = os.path.basename(self.args.save_dir),
             # track hyperparameters and run metadata
             config=args,
-            # resume=True,
+            resume=True if args.resume else None,
             # sync_tensorboard=True
         )
 
@@ -113,7 +116,7 @@ class Trainer(object):
                                           batch_size=(args.batch_size
                                                       if x == 'train' else 1),
                                           shuffle=(x == 'train'),
-                                          num_workers=args.num_workers * self.device_count,
+                                          num_workers=args.num_workers * self.device_count if x == 'train' else 0,
                                           pin_memory=(x == 'train'),
                                           # worker_init_fn=seed_worker, generator=g
                                           )
@@ -259,6 +262,9 @@ class Trainer(object):
 
                 outputs, _ = self.model(inputs)
                 res = count.shape[1] - torch.sum(outputs).item()
+                del inputs
+                del outputs
+                torch.cuda.empty_cache()
                 epoch_res.append(res)
 
         epoch_res = np.array(epoch_res)

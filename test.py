@@ -79,6 +79,9 @@ def do_test(model, device, dataloader, model_path, pred_density_map=True, **kwar
                 vis_img = (vis_img * 255).astype(np.uint8)
                 vis_img = cv2.applyColorMap(vis_img, cv2.COLORMAP_JET)
                 cv2.imwrite(os.path.join(pred_density_map_path, str(name[0]) + '.png'), vis_img)
+            del inputs
+            del outputs
+            torch.cuda.empty_cache()
 
     image_errs = np.array(image_errs)
     mse = np.sqrt(np.mean(np.square(image_errs)))
