@@ -90,7 +90,7 @@ paper: mae: 85.6, mse: 148.3
 
 pretrained_models/model_qnrf.pth: mae 85.76006602669905, mse 150.3385868782564
 
-best_model_7.pth: mae 89.24010239104311, mse 155.59441664755747
+best_model_mae.pth: mae 84.92386586080768, mse 144.97950683640175
 
 ### Shanghai A
 
@@ -98,7 +98,7 @@ paper: mae: 59.7, mse: 95.7
 
 pretrained_models/sh_A.pth: mae 60.18459678482223, mse 96.35352205145051
 
-best_model_7.pth: mae 61.40630636110411, mse 92.74855786318376
+best_model_mae.pth: mae 61.40630636110411, mse 92.74855786318376
 
 ### Shanghai B
 
