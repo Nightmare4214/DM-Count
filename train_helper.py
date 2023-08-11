@@ -72,16 +72,6 @@ class Trainer(object):
         self.args = args
         os.makedirs(self.save_dir, exist_ok=True)
         # os.environ["WANDB_MODE"] = "offline"
-        wandb.init(
-            # set the wandb project where this run will be logged
-            project="DM-Count",
-            name = os.path.basename(self.args.save_dir),
-            # track hyperparameters and run metadata
-            config=args,
-            resume=True if args.resume else None,
-            # sync_tensorboard=True
-        )
-
         time_str = datetime.strftime(datetime.now(), '%m%d-%H%M%S')
         self.logger = log_utils.get_logger(os.path.join(self.save_dir, 'train-{:s}.log'.format(time_str)))
         log_utils.print_config(vars(args), self.logger)
@@ -125,15 +115,24 @@ class Trainer(object):
         self.optimizer = optim.Adam(self.model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
 
         self.start_epoch = 0
+        self.best_mae = np.inf
+        self.best_mse = np.inf
+        self.best_count = 0
+        self.wandb_id = None
         if args.resume:
             self.logger.info('loading pretrained model from ' + args.resume)
             suf = os.path.splitext(args.resume)[-1]
-            if suf == 'tar':
+            if suf == '.tar':
                 checkpoint = torch.load(args.resume, self.device)
                 self.model.load_state_dict(checkpoint['model_state_dict'])
                 self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
                 self.start_epoch = checkpoint['epoch'] + 1
-            elif suf == 'pth':
+                self.best_mae = checkpoint['best_mae']
+                self.best_mse = checkpoint['best_mse']
+                self.best_count = checkpoint['best_count']
+                if 'wandb_id' in checkpoint:
+                    self.wandb_id = checkpoint['wandb_id']
+            elif suf == '.pth':
                 self.model.load_state_dict(torch.load(args.resume, self.device))
         else:
             self.logger.info('random initialization')
@@ -146,11 +145,18 @@ class Trainer(object):
 
         self.log_dir = os.path.join(self.save_dir, 'runs')
         # self.writer = SummaryWriter(self.log_dir)
-
         self.save_list = Save_Handle(max_num=1)
-        self.best_mae = np.inf
-        self.best_mse = np.inf
-        self.best_count = 0
+        wandb.init(
+            # set the wandb project where this run will be logged
+            project="DM-Count",
+            id = self.wandb_id,
+            name = os.path.basename(self.args.save_dir),
+            # track hyperparameters and run metadata
+            config=args,
+            resume=True if args.resume else None,
+            # sync_tensorboard=True
+        )
+        self.wandb_id = wandb.run.id
 
     def train(self):
         """training process"""
@@ -246,7 +252,11 @@ class Trainer(object):
         torch.save({
             'epoch': self.epoch,
             'optimizer_state_dict': self.optimizer.state_dict(),
-            'model_state_dict': model_state_dic
+            'model_state_dict': model_state_dic,
+            'best_mae': self.best_mae,
+            'best_mse': self.best_mse,
+            'best_count': self.best_count,
+            'wandb_id': self.wandb_id
         }, save_path)
         self.save_list.append(save_path)
 
