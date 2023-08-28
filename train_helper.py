@@ -19,7 +19,7 @@ import utils.log_utils as log_utils
 from datasets.crowd import Crowd_qnrf, Crowd_nwpu, Crowd_sh
 from losses.ot_loss import OT_Loss
 from models import vgg19
-from utils.pytorch_utils import Save_Handle
+from utils.pytorch_utils import Save_Handle, seed_worker, setup_seed
 
 
 include_keys=['max_epoch', 'crop_size', 'extra_aug', 'lr', 'wot', 'wtv', 'reg', 'num_of_iter_in_ot', 'norm_cood', 'batch_size']
@@ -39,17 +39,6 @@ def get_run_name_by_args(args, include_keys=None, exclude_keys=None):
     return '_'.join(result)
 
 
-def seed_worker(worker_id):
-    worker_seed = torch.initial_seed() % 2 ** 32
-
-    np.random.seed(worker_seed)
-    random.seed(worker_seed)
-
-
-# g = torch.Generator()
-# g.manual_seed(42)
-
-
 def train_collate(batch):
     transposed_batch = list(zip(*batch))
     images = torch.stack(transposed_batch[0], 0)
@@ -64,6 +53,14 @@ class Trainer(object):
 
     def setup(self):
         args = self.args
+        if args.randomless:
+            seed = args.seed
+            g = torch.Generator()
+            g.manual_seed(seed)
+            setup_seed(seed)
+        else:
+            torch.backends.cudnn.benchmark = True
+
         if os.path.exists(args.resume):
             self.save_dir = os.path.dirname(args.resume)
         else:
@@ -108,7 +105,7 @@ class Trainer(object):
                                           shuffle=(x == 'train'),
                                           num_workers=args.num_workers * self.device_count if x == 'train' else 0,
                                           pin_memory=(x == 'train'),
-                                          # worker_init_fn=seed_worker, generator=g
+                                          worker_init_fn=seed_worker if args.randomless else None, generator=g if args.randomless else None
                                           )
                             for x in ['train', 'val']}
         self.model = vgg19().to(self.device)
@@ -132,6 +129,10 @@ class Trainer(object):
                 self.best_count = checkpoint['best_count']
                 if 'wandb_id' in checkpoint:
                     self.wandb_id = checkpoint['wandb_id']
+                if args.randomless:
+                    random.setstate(checkpoint['random_state'])
+                    np.random.set_state(checkpoint['np_random_state'])
+                    torch.random.set_rng_state(checkpoint['torch_random_state'].cpu())
             elif suf == '.pth':
                 self.model.load_state_dict(torch.load(args.resume, self.device))
         else:
@@ -256,7 +257,10 @@ class Trainer(object):
             'best_mae': self.best_mae,
             'best_mse': self.best_mse,
             'best_count': self.best_count,
-            'wandb_id': self.wandb_id
+            'wandb_id': self.wandb_id,
+            'random_state': random.getstate(),
+            'np_random_state': np.random.get_state(),
+            'torch_random_state': torch.random.get_rng_state()
         }, save_path)
         self.save_list.append(save_path)
 

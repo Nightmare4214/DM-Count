@@ -41,6 +41,8 @@ def parse_args():
                         help='sinkhorn iterations')
     parser.add_argument('--norm_cood', type=int, default=0, help='whether to norm cood when computing distance')
     parser.add_argument('--extra_aug', default=False, required=False, action='store_true', help='extra_aug')
+    parser.add_argument('--randomless', default=False, required=False, action='store_true', help='randomless')
+    parser.add_argument('--seed', type=int, default=42, help='random seed')
 
     args = parser.parse_args()
 
@@ -60,7 +62,7 @@ def parse_args():
 
 if __name__ == '__main__':
     args = parse_args()
-    torch.backends.cudnn.benchmark = True
+    # torch.backends.cudnn.benchmark = True
     os.environ['CUDA_VISIBLE_DEVICES'] = args.device.strip()  # set vis gpu
     # setup_seed(42)
     trainer = Trainer(args)
